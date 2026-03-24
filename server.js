@@ -2,162 +2,105 @@ const express = require('express');
 const app = express();
 app.use(express.json());
 
-// --- AYARLAR ---
-const GEM_PRICE_USD = 0.75; // 1B Gems fiyatı
-// ---------------
-
+const GEM_PRICE_USD = 0.75; 
 let gameData = {};
 
 app.post('/update', (req, res) => {
-    const { username, rank, gems, gpm, huges_dict, titanics_dict } = req.body;
-    
-    // Gems stringini sayıya çevirme
-    let gems_num = 0;
-    if (gems) {
-        let n = parseFloat(gems);
-        if (gems.includes('B')) gems_num = n * 1e9;
-        else if (gems.includes('M')) gems_num = n * 1e6;
-        else if (gems.includes('K')) gems_num = n * 1e3;
-        else gems_num = n;
-    }
-
+    const { username, rank, gems, gems_num, gpm, huges_dict, titanics_dict } = req.body;
     gameData[username] = { 
-        rank: rank || "Rank ?",
-        gems: gems || "0",
-        gems_num: gems_num,
-        gpm: gpm || "0/m",
-        huges_dict: huges_dict || {}, // {"Huge Hippo": 1}
+        rank, gems, gems_num: gems_num || 0, gpm, 
+        huges_dict: huges_dict || {}, 
         titanics_dict: titanics_dict || {},
         lastUpdate: new Date().toLocaleTimeString('tr-TR'),
         online: true 
     };
-    res.status(200).send("Veri Alındı");
+    res.status(200).send("OK");
 });
 
-function formatNum(n) {
-    if (n >= 1e9) return (n / 1e9).toFixed(2) + "B";
-    if (n >= 1e6) return (n / 1e6).toFixed(2) + "M";
-    if (n >= 1e3) return (n / 1e3).toFixed(1) + "K";
-    return n.toString();
-}
-
 app.get('/', (req, res) => {
-    let active_accounts = 0;
-    let total_gems_num = 0;
-    let total_h = 0;
-    let total_t = 0;
+    let total_gems = 0, total_h = 0, total_t = 0, acc_count = 0;
     let cards = "";
 
     for (let user in gameData) {
         let u = gameData[user];
-        active_accounts++;
-        total_gems_num += u.gems_num;
+        acc_count++;
+        total_gems += u.gems_num;
         
-        let h_count = Object.values(u.huges_dict).reduce((a, b) => a + b, 0);
-        let t_count = Object.values(u.titanics_dict).reduce((a, b) => a + b, 0);
-        total_h += h_count;
-        total_t += t_count;
+        let h_count = Object.values(u.huges_dict).reduce((a, b) => a + (b.count || 0), 0);
+        let t_count = Object.values(u.titanics_dict).reduce((a, b) => a + (b.count || 0), 0);
+        total_h += h_count; total_t += t_count;
 
-        // Pet Listesi HTML (Görsel Desteği Eklenmiş)
-        let petDetails = "";
-        for (let pet in u.huges_dict) {
-            petDetails += `
-            <div class="pet-item">
-                <img src="https://biggamesapi.io/image/${pet}" alt="${pet}" onerror="this.onerror=null; this.src='https://via.placeholder.com/40'">
-                <span>${pet} x${u.huges_dict[pet]}</span>
-            </div>`;
-        }
-        for (let pet in u.titanics_dict) {
-            petDetails += `
-            <div class="pet-item titanic-item">
-                <img src="https://biggamesapi.io/image/${pet}" alt="${pet}" onerror="this.onerror=null; this.src='https://via.placeholder.com/40'">
-                <span>[TITANIC] ${pet} x${u.titanics_dict[pet]}</span>
-            </div>`;
-        }
+        let petHtml = "";
+        const buildPets = (dict) => {
+            for(let p in dict) {
+                let img = dict[p].img ? `https://biggamesapi.io/image/${dict[p].img}` : `https://via.placeholder.com/40`;
+                petHtml += `<div class="p-item"><img src="${img}"><span>${p} x${dict[p].count}</span></div>`;
+            }
+        };
+        buildPets(u.huges_dict); buildPets(u.titanics_dict);
 
         cards += `
         <div class="card">
             <div class="card-header">
-                <h2>${user} <span class="rank">${u.rank}</span></h2>
-                <div class="status-dot"></div>
+                <span class="username">${user}</span>
+                <span class="rank-tag">${u.rank}</span>
+                <div class="dot"></div>
             </div>
-            <div class="main-stat">
-                <span class="label">TOTAL GEMS</span>
-                <span class="gem-val">${u.gems}</span>
-                <span class="usd-val">$${((u.gems_num/1e9)*GEM_PRICE_USD).toFixed(3)} USD</span>
+            <div class="gem-section">
+                <div class="label">TOTAL GEMS</div>
+                <div class="gem-val">${u.gems}</div>
+                <div class="usd-val">$${((u.gems_num/1e9)*GEM_PRICE_USD).toFixed(3)} USD</div>
             </div>
-            <div class="sub-stats">
-                <div class="stat gpm-stat"><span class="label">GEMS/M</span><span class="value yellow">${u.gpm}</span></div>
-                <div class="stat pet-stat">
-                    <div><span class="value red">${h_count}</span><span class="label">HUGES</span></div>
-                    <div><span class="value yellow">${t_count}</span><span class="label">TITANICS</span></div>
-                </div>
+            <div class="stats-grid">
+                <div class="s-box"><span class="s-lab">GEMS/M</span><span class="s-val yellow">${u.gpm}</span></div>
+                <div class="s-box"><span class="s-lab">HUGES</span><span class="s-val red">${h_count}</span></div>
+                <div class="s-box"><span class="s-lab">TITANICS</span><span class="s-val orange">${t_count}</span></div>
             </div>
             <details>
-                <summary>Detailed Pets</summary>
-                <div class="pet-list">${petDetails || "No special pets found"}</div>
+                <summary>Show Inventory</summary>
+                <div class="p-list">${petHtml || "No pets"}</div>
             </details>
-            <div class="footer">Last update: ${u.lastUpdate}</div>
         </div>`;
     }
 
     res.send(`
-    <!DOCTYPE html>
     <html>
     <head>
-        <title>Batu Tracker System</title>
+        <title>Batu PS99 Dashboard</title>
         <style>
-            body { background: #080808; color: white; font-family: 'Segoe UI', sans-serif; padding: 20px; margin: 0; }
-            h1.title { text-align: center; font-weight: 200; letter-spacing: 4px; color: #555; margin-bottom: 30px; }
-            
-            /* --- HEADER (ÜST BAR) STİLLERİ (image_17.png) --- */
-            .header { background: #111; border: 1px solid #222; border-radius: 12px; padding: 25px; display: flex; justify-content: space-around; position: sticky; top: 20px; z-index: 100; box-shadow: 0 5px 20px rgba(0,0,0,0.5); margin-bottom: 40px;}
-            .header-stat { text-align: center; }
-            .header-label { display: block; font-size: 0.7rem; color: #666; font-weight: bold; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 5px; }
-            .header-value { font-size: 1.8rem; font-weight: bold; }
-            .total-gem-text { color: #00ffff; text-shadow: 0 0 15px rgba(0, 255, 255, 0.5); }
-            .total-usd-text { color: #555; font-size: 0.9rem; margin-top: 5px; }
-
-            /* --- KUTUCUKLAR VE GENEL STİLLER (Bozulmayan Tasarım) --- */
-            .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 25px; }
-            .card { background: #121212; border: 1px solid #222; border-radius: 12px; padding: 25px; position: relative; transition: 0.3s; }
-            .card:hover { border-color: #00ffff; box-shadow: 0 0 20px rgba(0, 255, 255, 0.1); }
-            .status-dot { width: 10px; height: 10px; background: #00ff00; border-radius: 50%; position: absolute; top: 25px; right: 25px; box-shadow: 0 0 10px #00ff00; }
-            .card-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #222; padding-bottom: 15px; margin-bottom: 20px; }
-            .username { margin: 0; font-size: 1.2rem; color: #eee; }
-            .rank { background: #222; color: #aaa; padding: 3px 8px; border-radius: 20px; font-size: 0.7rem; font-weight: bold; margin-left: 10px;}
-            .label { display: block; font-size: 0.7rem; color: #555; font-weight: bold; letter-spacing: 1px; text-transform: uppercase; }
-            .value { font-size: 1.8rem; font-weight: bold; }
-            .gem-val { color: #00ffff; font-size: 2rem; font-weight: bold; text-shadow: 0 0 10px rgba(0, 255, 255, 0.5); display: block; }
-            .usd-val { color: #555; font-size: 0.9rem; }
-            .yellow { color: #ffcc00; } .red { color: #ff4444; }
-            .sub-stats { display: flex; flex-direction: column; gap: 15px; background: #1a1a1a; padding: 15px; border-radius: 8px; margin: 20px 0;}
-            .stat { display: flex; justify-content: space-between; align-items: center;}
-            .pet-stat { justify-content: space-around; text-align: center;}
-            .pet-stat .label { color: #444; }
-            summary { cursor: pointer; font-size: 12px; color: #00ffff; margin-bottom: 15px; user-select: none;}
-            .pet-list { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid #222; padding-top: 15px;}
-            .pet-item { display: flex; align-items: center; gap: 12px; font-size: 12px;}
-            .pet-item img { width: 35px; height: 35px; border-radius: 5px; background: #222; }
-            .titanic-item { color: #ffcc00; font-weight: bold; }
-            .footer { margin-top: 15px; font-size: 0.7rem; color: #333; text-align: right; }
+            body { background: #050505; color: white; font-family: 'Inter', sans-serif; margin: 0; padding: 20px; }
+            .top-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 40px; }
+            .t-card { background: #0f0f0f; padding: 20px; border-radius: 12px; border: 1px solid #1a1a1a; text-align: center; }
+            .t-lab { font-size: 10px; color: #555; letter-spacing: 2px; }
+            .t-val { font-size: 24px; font-weight: bold; display: block; margin-top: 5px; }
+            .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 25px; }
+            .card { background: #0f0f0f; border: 1px solid #1a1a1a; border-radius: 15px; padding: 25px; transition: 0.3s; }
+            .card:hover { border-color: #00ffff; transform: translateY(-5px); box-shadow: 0 10px 30px rgba(0,255,255,0.15); }
+            .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+            .rank-tag { background: #1a1a1a; font-size: 10px; padding: 4px 10px; border-radius: 20px; color: #888; }
+            .gem-val { color: #00ffff; font-size: 32px; font-weight: bold; text-shadow: 0 0 15px rgba(0,255,255,0.3); }
+            .usd-val { color: #444; font-size: 13px; }
+            .stats-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin: 20px 0; background: #141414; padding: 15px; border-radius: 10px; }
+            .s-lab { display: block; font-size: 9px; color: #444; }
+            .s-val { font-size: 16px; font-weight: bold; }
+            .yellow { color: #ffcc00; } .red { color: #ff4444; } .orange { color: #ff8800; }
+            summary { color: #00ffff; font-size: 12px; cursor: pointer; margin-top: 10px; opacity: 0.7; }
+            .p-list { display: grid; gap: 10px; margin-top: 15px; border-top: 1px solid #222; padding-top: 15px; }
+            .p-item { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+            .p-item img { width: 35px; height: 35px; border-radius: 5px; background: #1a1a1a; }
+            .dot { width: 8px; height: 8px; background: #00ff00; border-radius: 50%; box-shadow: 0 0 10px #00ff00; }
         </style>
-        <script>setTimeout(() => location.reload(), 10000);</script>
     </head>
     <body>
-        <h1 class="title">BATU TRACKER SYSTEM</h1>
-        
-        <div class="header">
-            <div class="header-stat"><span class="header-label">ACTIVE ACCOUNTS</span><span class="header-value">${active_accounts}</span></div>
-            <div class="header-stat"><span class="header-label">TOTAL GEMS</span><span class="header-value total-gem-text">${formatNum(total_gems_num)}</span><div class="total-usd-text">$${((total_gems_num/1e9)*GEM_PRICE_USD).toFixed(2)} USD</div></div>
-            <div class="header-stat"><span class="header-label">TOTAL HUGES</span><span class="header-value red">${total_h}</span></div>
-            <div class="header-stat"><span class="header-label">TOTAL TITANICS</span><span class="header-value yellow">${total_t}</span></div>
+        <div class="top-bar">
+            <div class="t-card"><span class="t-lab">ACCOUNTS</span><span class="t-val">${acc_count}</span></div>
+            <div class="t-card"><span class="t-lab">TOTAL GEMS</span><span class="t-val" style="color:#00ffff">${(total_gems/1e9).toFixed(2)}B</span></div>
+            <div class="t-card"><span class="t-lab">TOTAL HUGES</span><span class="t-val" style="color:#ff4444">${total_h}</span></div>
+            <div class="t-card"><span class="t-lab">TOTAL TITANICS</span><span class="t-val" style="color:#ff8800">${total_t}</span></div>
         </div>
-
-        <div class="grid">${cards || '<div style="color:#222; text-align:center; width:100%; font-size:1.5rem; padding: 50px;">Waiting for connection...</div>'}</div>
+        <div class="grid">${cards}</div>
     </body>
     </html>`);
 });
 
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log("Live on " + PORT));
+app.listen(process.env.PORT || 10000);
